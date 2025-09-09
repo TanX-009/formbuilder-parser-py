@@ -1,16 +1,32 @@
+from typing import Dict, Any
 from .constant import form_context_split_str
 from .field import walk_field
 from .dependency import form_dep_data
 
 
-def walk_section(form: dict, section: dict, context: str, answers: dict) -> None:
+def walk_section(
+    form: dict,
+    section: dict,
+    context: str,
+    answers: dict,
+    metadata_answers: Dict[str, Any],  # nested dict passed from phase
+) -> None:
     """
     Walk over fields in a section and call walk_field for each renderable field.
-    Triggers are handled immediately inside walk_field.
+    Handles section-level metadata nesting.
     """
     section_id = section.get("id", "<no-id>")
     derived_context = f"{context}{form_context_split_str}{section_id}"
-    # print(f"SECTION CONTEXT: {derived_context}")
+
+    # Section-level metadata
+    section_meta_id = section.get("metadata", {}).get("id")
+    if section_meta_id:
+        # Ensure a nested dict for this section inside the parent metadata dict
+        if section_meta_id not in metadata_answers:
+            metadata_answers[section_meta_id] = {}
+        nested_metadata = metadata_answers[section_meta_id]
+    else:
+        nested_metadata = metadata_answers
 
     fields = section.get("fields", [])
     if not isinstance(fields, list):
@@ -22,7 +38,7 @@ def walk_section(form: dict, section: dict, context: str, answers: dict) -> None
             print(f"⚠️ skipping invalid field in section {section_id}")
             continue
 
-        # Evaluate field visibility and walk it
         dep_data = form_dep_data(form, field, derived_context, answers)
         if dep_data.get("canRender", True):
-            walk_field(form, field, derived_context, answers)
+            # Pass nested_metadata so the field can add its answers under this section's metadata
+            walk_field(form, field, derived_context, answers, nested_metadata)
