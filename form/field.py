@@ -93,6 +93,11 @@ def walk_field(
     elif field_type == "subformwtable" and "phases" in field:
         # Only create a metadata entry if the subform itself has metadata.id
         subform_metadata_id = field.get("metadata", {}).get("id")
+        if not subform_metadata_id:
+            return  # no metadata, skip storing answers
+
+        if subform_metadata_id not in metadata_answers:
+            metadata_answers[subform_metadata_id] = []
 
         # Extract all subform entry indices (n) from the answers
         subform_entry_contexts = set()
