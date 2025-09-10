@@ -31,13 +31,13 @@ def get_form_def(context: str, form: dict) -> Optional[dict]:
                 return None
             current_form = None
             current_phase = phase
-            continue
 
-        if current_phase:
             # return phase if last segment matches
             if idx == len(split) - 1 and key == current_phase["id"]:
                 return current_phase
+            continue
 
+        if current_phase:
             section = next(
                 (s for s in current_phase.get("sections", []) if s["id"] == key), None
             )
@@ -45,13 +45,13 @@ def get_form_def(context: str, form: dict) -> Optional[dict]:
                 return None
             current_phase = None
             current_section = section
-            continue
 
-        if current_section:
             # return section if last segment matches
             if idx == len(split) - 1 and key == current_section["id"]:
                 return current_section
+            continue
 
+        if current_section:
             # 1) direct field match
             field = next(
                 (f for f in current_section.get("fields", []) if f["id"] == key), None

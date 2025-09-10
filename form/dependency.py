@@ -45,6 +45,20 @@ def form_dep_data(
 
     for dep in node.get("dependency", []):
         context_from_path = resolve_context_path(form, dep["path"], context)
+
+        # --- CRITICAL dependency check (whole parent tree visibility) ---
+        # Walk through all parent paths
+        for i in range(len(dep["path"]) - 1):
+            parent_path = dep["path"][: i + 1]
+            parent_context = resolve_context_path(form, parent_path, context)
+
+            # extract definition of that parent node
+            def_from_target = get_form_def(parent_context["woIdx"], form)
+            if def_from_target:
+                parent_dep_data = form_dep_data(
+                    form, def_from_target, parent_context["wIdx"], form_answers
+                )
+                can_render = can_render and parent_dep_data["canRender"]
         dep_answers = get_form_answer(context_from_path["wIdx"], form_answers)
 
         dep_type = dep.get("type")
