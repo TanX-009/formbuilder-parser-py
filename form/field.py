@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 from form.answer import get_subform_answers
 from .constant import form_context_split_str
@@ -13,7 +13,7 @@ def walk_field(
     field: dict,
     context: str,
     answers: dict,
-    metadata_answers: Dict[str, List[Any]],  # dict keyed by metadata.id
+    metadata_answers: Dict[str, Any],  # dict keyed by metadata.id
 ) -> None:
     """
     Walk a single field, handle canRender, collect answers under metadata.id, and propagate triggers.
@@ -41,7 +41,7 @@ def walk_field(
             metadata_answers[metadata_id].extend(value)
         elif subform_answers:
             if metadata_id not in metadata_answers:
-                metadata_answers[metadata_id] = []
+                metadata_answers[metadata_id] = {}
 
     field_type = field.get("type")
     context_for_trigger = f"{context}"
@@ -97,7 +97,7 @@ def walk_field(
             return  # no metadata, skip storing answers
 
         if subform_metadata_id not in metadata_answers:
-            metadata_answers[subform_metadata_id] = []
+            metadata_answers[subform_metadata_id] = {}
 
         # Extract all subform entry indices (n) from the answers
         subform_entry_contexts = set()
@@ -111,7 +111,7 @@ def walk_field(
         for n in sorted(subform_entry_contexts):
             entry_context = f"{derived_context}{form_context_split_str}{n}"
             # Temporary dict to hold nested metadata answers for this entry
-            nested_metadata: Dict[str, List[Any]] = {}
+            nested_metadata: Dict[str, Any] = {}
 
             from .phase import walk_phase
 
@@ -120,4 +120,4 @@ def walk_field(
 
             # Only append if any nested field has metadata answers
             if nested_metadata:
-                metadata_answers[subform_metadata_id].append(nested_metadata)
+                metadata_answers[subform_metadata_id][n] = nested_metadata

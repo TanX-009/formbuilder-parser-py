@@ -3,7 +3,7 @@ from .dependency import form_dep_data
 from .phase import walk_phase
 
 
-def walk_form(form: dict, answers: dict) -> Dict[str, List[Any]]:
+def walk_form(form: dict, answers: dict) -> Dict[str, Any]:
     """
     Walk an entire form and collect all answers organized by metadata.id
     """
