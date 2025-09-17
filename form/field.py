@@ -14,6 +14,8 @@ def walk_field(
     context: str,
     answers: dict,
     metadata_answers: Dict[str, Any],  # dict keyed by metadata.id
+    nested_answers: Dict[str, Any],
+    flat_answers: Dict[str, Any],
 ) -> None:
     """
     Walk a single field, handle canRender, collect answers under metadata.id, and propagate triggers.
@@ -34,6 +36,7 @@ def walk_field(
     # Only store answers if the field has metadata.id
     metadata_id = field.get("metadata", {}).get("id")
     # print(f"{derived_context}-----{ metadata_id }--------{value}")
+    # print(f"{value}")
     if metadata_id:
         if value:  # regular field has answers
             if metadata_id not in metadata_answers:
@@ -42,6 +45,24 @@ def walk_field(
         elif subform_answers:
             if metadata_id not in metadata_answers:
                 metadata_answers[metadata_id] = {}
+
+    # add answers
+    if value:
+        if field_id not in nested_answers:
+            nested_answers[field_id] = []
+        nested_answers[field_id].extend(value)
+
+        # assign if no field exists with same field_id
+        if field_id not in flat_answers:
+            flat_answers[field_id] = []
+
+        #     flat_answers[field_id] = value
+        # # generate a unique hash using the context if already exists
+        # else:
+        #     ctx_hash = str(abs(hash(context)))[:6]
+        #     flat_answers[f"{field_id}::{ctx_hash}"] = value
+
+        flat_answers[field_id].append(value)
 
     field_type = field.get("type")
     context_for_trigger = f"{context}"
@@ -63,7 +84,13 @@ def walk_field(
             for trig in opt.get("triggers", []):
                 if trig.get("type") == "section":
                     walk_section(
-                        form, trig, context_for_trigger, answers, metadata_answers
+                        form,
+                        trig,
+                        context_for_trigger,
+                        answers,
+                        metadata_answers,
+                        nested_answers,
+                        flat_answers,
                     )
 
     elif field_type in ["text", "textarea", "number", "password"]:
@@ -71,7 +98,13 @@ def walk_field(
             for trig in field.get("triggers", []):
                 if trig.get("type") == "section":
                     walk_section(
-                        form, trig, context_for_trigger, answers, metadata_answers
+                        form,
+                        trig,
+                        context_for_trigger,
+                        answers,
+                        metadata_answers,
+                        nested_answers,
+                        flat_answers,
                     )
 
     elif field_type == "fileselect":
@@ -79,7 +112,7 @@ def walk_field(
         for f in files:
             filenames_cache[f["id"]] = f["name"]
 
-        for i, ans_id in enumerate(value):
+        for _, ans_id in enumerate(value):
             filename = filenames_cache.get(str(ans_id), "")
             for trig in field.get("triggers", []):
                 trig_copy = trig.copy()
@@ -87,7 +120,13 @@ def walk_field(
                 trig_copy["id"] = f"{trig_copy.get('id', '')}_{ans_id}"
                 if trig_copy.get("type") == "section":
                     walk_section(
-                        form, trig_copy, context_for_trigger, answers, metadata_answers
+                        form,
+                        trig_copy,
+                        context_for_trigger,
+                        answers,
+                        metadata_answers,
+                        nested_answers,
+                        flat_answers,
                     )
 
     elif field_type == "subformwtable" and "phases" in field:
@@ -112,12 +151,23 @@ def walk_field(
             entry_context = f"{derived_context}{form_context_split_str}{n}"
             # Temporary dict to hold nested metadata answers for this entry
             nested_metadata: Dict[str, Any] = {}
+            nested_nested_answers: Dict[str, Any] = {}
 
             from .phase import walk_phase
 
             for phase in field["phases"]:
-                walk_phase(form, phase, entry_context, answers, nested_metadata)
+                walk_phase(
+                    form,
+                    phase,
+                    entry_context,
+                    answers,
+                    nested_metadata,
+                    nested_nested_answers,
+                    flat_answers,
+                )
 
             # Only append if any nested field has metadata answers
             if nested_metadata:
                 metadata_answers[subform_metadata_id][n] = nested_metadata
+            if nested_nested_answers:
+                nested_answers[n] = nested_nested_answers

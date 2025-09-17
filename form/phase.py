@@ -10,6 +10,8 @@ def walk_phase(
     context: str,
     answers: dict,
     metadata_answers: Dict[str, Any],  # can be nested dict
+    nested_answers: Dict[str, Any],
+    flat_answers: Dict[str, Any],
 ) -> None:
     phase_id = phase.get("id", "<no-id>")
     derived_context = f"{context}{form_context_split_str}{phase_id}"
@@ -27,6 +29,11 @@ def walk_phase(
         # No metadata → just use the same top-level dict
         nested_metadata = metadata_answers
 
+    # Ensure a nested dict for this phase
+    if phase_id not in nested_answers:
+        nested_answers[phase_id] = {}
+    nested_nested_answers = nested_answers[phase_id]
+
     sections = phase.get("sections", [])
     if not isinstance(sections, list):
         print(f"⚠️ sections missing or not a list in phase {phase_id}")
@@ -43,4 +50,12 @@ def walk_phase(
             continue
 
         # Pass the nested metadata dict to section
-        walk_section(form, section, derived_context, answers, nested_metadata)
+        walk_section(
+            form,
+            section,
+            derived_context,
+            answers,
+            nested_metadata,
+            nested_nested_answers,
+            flat_answers,
+        )

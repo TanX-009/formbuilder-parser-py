@@ -25,16 +25,16 @@ def main():
     form_json = load_json(form_file)
     ans_json = load_json(ans_file)
 
-    metadata = walk_form(form_json, ans_json)
+    metadata, nested, flat = walk_form(form_json, ans_json)
 
-    # Pretty-print the nested metadata object
+    print("\n============ Metadata ============\n")
     print(json.dumps(metadata, indent=2))
 
-    # print("=== Form Definition ===")
-    # print(json.dumps(form_json, indent=2))
+    print("\n============ Nested ============\n")
+    print(json.dumps(nested, indent=2))
 
-    # print("\n=== Answers ===")
-    # print(json.dumps(ans_json, indent=2))
+    print("\n============ Flat ============\n")
+    print(json.dumps(flat, indent=2))
 
 
 if __name__ == "__main__":
