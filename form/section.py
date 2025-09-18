@@ -9,9 +9,11 @@ def walk_section(
     section: dict,
     context: str,
     answers: dict,
+    canRender: bool,
     metadata_answers: Dict[str, Any],  # nested dict passed from phase
     nested_answers: Dict[str, Any],
     flat_answers: Dict[str, Any],
+    possible_answers: Dict[str, Any],
 ) -> None:
     """
     Walk over fields in a section and call walk_field for each renderable field.
@@ -20,9 +22,9 @@ def walk_section(
     section_id = section.get("id", "<no-id>")
     derived_context = f"{context}{form_context_split_str}{section_id}"
 
-    # Section-level metadata
+    # Metadata answers
     section_meta_id = section.get("metadata", {}).get("id")
-    if section_meta_id:
+    if canRender and section_meta_id:
         # Ensure a nested dict for this section inside the parent metadata dict
         if section_meta_id not in metadata_answers:
             metadata_answers[section_meta_id] = {}
@@ -30,10 +32,18 @@ def walk_section(
     else:
         nested_metadata = metadata_answers
 
-    # Ensure a nested dict for this section
-    if section_id not in nested_answers:
-        nested_answers[section_id] = {}
-    nested_nested_answers = nested_answers[section_id]
+    # Nested answers
+    if canRender:
+        if section_id not in nested_answers:
+            nested_answers[section_id] = {}
+        nested_nested_answers = nested_answers[section_id]
+    else:
+        nested_nested_answers = nested_answers
+
+    # Possible answers
+    if section_id not in possible_answers:
+        possible_answers[section_id] = {}
+    nested_possible_answers = possible_answers[section_id]
 
     fields = section.get("fields", [])
     if not isinstance(fields, list):
@@ -46,14 +56,29 @@ def walk_section(
             continue
 
         dep_data = form_dep_data(form, field, derived_context, answers)
-        if dep_data.get("canRender", True):
+        if canRender and dep_data.get("canRender", True):
             # Pass nested_metadata so the field can add its answers under this section's metadata
             walk_field(
                 form,
                 field,
                 derived_context,
                 answers,
+                True,
                 nested_metadata,
                 nested_nested_answers,
                 flat_answers,
+                nested_possible_answers,
+            )
+        else:
+            # Pass nested_metadata so the field can add its answers under this section's metadata
+            walk_field(
+                form,
+                field,
+                derived_context,
+                answers,
+                False,
+                nested_metadata,
+                nested_nested_answers,
+                flat_answers,
+                nested_possible_answers,
             )

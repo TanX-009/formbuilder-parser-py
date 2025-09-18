@@ -25,16 +25,19 @@ def main():
     form_json = load_json(form_file)
     ans_json = load_json(ans_file)
 
-    metadata, nested, flat = walk_form(form_json, ans_json)
+    metadata, nested, flat, possible = walk_form(form_json, ans_json)
 
     print("\n============ Metadata ============\n")
     print(json.dumps(metadata, indent=2))
 
-    print("\n============ Nested ============\n")
-    print(json.dumps(nested, indent=2))
-
-    print("\n============ Flat ============\n")
-    print(json.dumps(flat, indent=2))
+    # print("\n============ Nested ============\n")
+    # print(json.dumps(nested, indent=2))
+    #
+    # print("\n============ Flat ============\n")
+    # print(json.dumps(flat, indent=2))
+    #
+    # print("\n============ Possible ============\n")
+    # print(json.dumps(possible, indent=2))
 
 
 if __name__ == "__main__":
