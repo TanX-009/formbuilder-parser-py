@@ -24,12 +24,24 @@ def main():
 
     form_json = load_json(form_file)
     ans_json = load_json(ans_file)
+    answersWRTMetadata = {
+        "company_name": ["Bus Alpha"],
+        "vat_id": ["f90s78dofjk"],
+        "customer_number": ["lsdufo7s9dfu7"],
+        "gln": [12345],
+        "checkin_format": ["pdf"],
+        "checkin_channel": ["email"],
+        "responsible_person_at_bp": ["tester"],
+        "email_of_responsible_person_at_bp": ["tester@email.com"],
+    }
 
-    metadata, nested, flat, possible = walk_form(form_json, ans_json)
+    metadata, nested, flat, possible, constructed = walk_form(
+        form_json, ans_json, answersWRTMetadata
+    )
 
-    print("\n============ Metadata ============\n")
-    print(json.dumps(metadata, indent=2))
-
+    # print("\n============ Metadata ============\n")
+    # print(json.dumps(metadata, indent=2))
+    #
     # print("\n============ Nested ============\n")
     # print(json.dumps(nested, indent=2))
     #
@@ -38,6 +50,11 @@ def main():
     #
     # print("\n============ Possible ============\n")
     # print(json.dumps(possible, indent=2))
+
+    print("\n============ Constructed ============\n")
+    print(json.dumps(constructed, indent=2))
+    # with open("constructed.json", "w", encoding="utf-8") as f:
+    #     json.dump(constructed, f, ensure_ascii=False, indent=4)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from form.answer import get_subform_answers
 from .constant import form_context_split_str
@@ -12,12 +12,15 @@ def walk_field(
     form: dict,
     field: dict,
     context: str,
+    metadata_context: list[str],
     answers: dict,
+    answersWRTMetadata: Optional[dict],
     canRender: bool,
     metadata_answers: Dict[str, Any],  # dict keyed by metadata.id
     nested_answers: Dict[str, Any],
     flat_answers: Dict[str, Any],
     possible_answers: Dict[str, Any],
+    constructed_answers: Dict[str, Any],
 ) -> None:
     """
     Walk a single field, handle canRender, collect answers under metadata.id, and propagate triggers.
@@ -25,7 +28,10 @@ def walk_field(
     from .section import walk_section
 
     field_id = field.get("id", "<no-id>")
+    field_type = field.get("type")
     derived_context = f"{context}{form_context_split_str}{field_id}"
+    derived_metadata_context = []
+    derived_metadata_context.extend(metadata_context)
 
     # dependency data
     dep_data = form_dep_data(form, field, derived_context, answers)
@@ -36,8 +42,26 @@ def walk_field(
     value = answers.get(derived_context, [])
     subform_answers = get_subform_answers(derived_context, answers)
 
-    # Metadata answers
     metadata_id = field.get("metadata", {}).get("id")
+    # Constructed answers
+    if (
+        metadata_id
+        and answersWRTMetadata
+        and field_type
+        and field_type != "subformwtable"
+    ):
+        derived_metadata_context.append(metadata_id)
+        nest = answersWRTMetadata
+
+        if derived_metadata_context[-1] == metadata_id:
+            for m_id in derived_metadata_context:
+                if m_id in nest:
+                    nest = nest[m_id]
+
+            if nest != answersWRTMetadata and isinstance(nest, list):
+                constructed_answers[derived_context] = nest
+
+    # Metadata answers
     if canRender and metadata_id:
         if value:  # regular field has answers
             if metadata_id not in metadata_answers:
@@ -74,7 +98,6 @@ def walk_field(
         if value:
             possible_answers[field_id].extend(value)
 
-    field_type = field.get("type")
     context_for_trigger = f"{context}"
 
     # Handle triggers
@@ -98,24 +121,30 @@ def walk_field(
                             form,
                             trig,
                             context_for_trigger,
+                            metadata_context,
                             answers,
+                            answersWRTMetadata,
                             True,
                             metadata_answers,
                             nested_answers,
                             flat_answers,
                             possible_answers,
+                            constructed_answers,
                         )
                     else:
                         walk_section(
                             form,
                             trig,
                             context_for_trigger,
+                            metadata_context,
                             answers,
+                            answersWRTMetadata,
                             False,
                             metadata_answers,
                             nested_answers,
                             flat_answers,
                             possible_answers,
+                            constructed_answers,
                         )
 
         # for possible answers
@@ -129,12 +158,15 @@ def walk_field(
                         form,
                         trig,
                         context_for_trigger,
+                        metadata_context,
                         answers,
+                        answersWRTMetadata,
                         False,
                         metadata_answers,
                         nested_answers,
                         flat_answers,
                         possible_answers,
+                        constructed_answers,
                     )
 
     elif field_type in ["text", "textarea", "number", "password"]:
@@ -145,24 +177,30 @@ def walk_field(
                         form,
                         trig,
                         context_for_trigger,
+                        metadata_context,
                         answers,
+                        answersWRTMetadata,
                         True,
                         metadata_answers,
                         nested_answers,
                         flat_answers,
                         possible_answers,
+                        constructed_answers,
                     )
                 else:
                     walk_section(
                         form,
                         trig,
                         context_for_trigger,
+                        metadata_context,
                         answers,
+                        answersWRTMetadata,
                         False,
                         metadata_answers,
                         nested_answers,
                         flat_answers,
                         possible_answers,
+                        constructed_answers,
                     )
         # for possible answers
         else:
@@ -172,12 +210,15 @@ def walk_field(
                         form,
                         trig,
                         context_for_trigger,
+                        metadata_context,
                         answers,
+                        answersWRTMetadata,
                         False,
                         metadata_answers,
                         nested_answers,
                         flat_answers,
                         possible_answers,
+                        constructed_answers,
                     )
 
     elif field_type == "fileselect":
@@ -196,24 +237,30 @@ def walk_field(
                         form,
                         trig_copy,
                         context_for_trigger,
+                        metadata_context,
                         answers,
+                        answersWRTMetadata,
                         True,
                         metadata_answers,
                         nested_answers,
                         flat_answers,
                         possible_answers,
+                        constructed_answers,
                     )
                 else:
                     walk_section(
                         form,
                         trig_copy,
                         context_for_trigger,
+                        metadata_context,
                         answers,
+                        answersWRTMetadata,
                         False,
                         metadata_answers,
                         nested_answers,
                         flat_answers,
                         possible_answers,
+                        constructed_answers,
                     )
         # for possible_answers
         for trig in field.get("triggers", []):
@@ -225,19 +272,60 @@ def walk_field(
                     form,
                     trig_copy,
                     context_for_trigger,
+                    metadata_context,
                     answers,
+                    answersWRTMetadata,
                     False,
                     metadata_answers,
                     nested_answers,
                     flat_answers,
                     possible_answers,
+                    constructed_answers,
                 )
 
     elif field_type == "subformwtable" and "phases" in field:
         # Only create a metadata entry if the subform itself has metadata.id
         subform_metadata_id = field.get("metadata", {}).get("id")
 
-        if canRender:
+        from .phase import walk_phase
+
+        # Constructed answers
+        if subform_metadata_id:
+            derived_metadata_context.append(metadata_id)
+            nest = answersWRTMetadata
+
+            # todo use uuid from answersWRTMetadata to construct metadata_context
+            # entry_metadata_context = metadata_context
+
+            if derived_metadata_context[-1] == metadata_id:
+                for m_id in derived_metadata_context:
+                    if m_id in nest:
+                        nest = nest[m_id]
+                if nest != answersWRTMetadata and isinstance(nest, dict):
+                    for k, _ in nest.items():
+
+                        entry_context = f"{derived_context}{form_context_split_str}{k}"
+                        entry_metadata_context = []
+                        entry_metadata_context.extend(derived_metadata_context)
+                        entry_metadata_context.append(k)
+
+                        for phase in field["phases"]:
+                            walk_phase(
+                                form,
+                                phase,
+                                entry_context,
+                                entry_metadata_context,
+                                answers,
+                                answersWRTMetadata,
+                                False,
+                                metadata_answers,
+                                nested_answers,
+                                flat_answers,
+                                possible_answers,
+                                constructed_answers,
+                            )
+
+        if canRender and subform_metadata_id:
             if subform_metadata_id not in metadata_answers:
                 metadata_answers[subform_metadata_id] = {}
 
@@ -250,32 +338,36 @@ def walk_field(
                 subform_entry_contexts.add(n_index)
 
             # Walk each subform entry
-            for n in sorted(subform_entry_contexts):
+            for n in subform_entry_contexts:
                 entry_context = f"{derived_context}{form_context_split_str}{n}"
                 # Temporary dict to hold nested metadata answers for this entry
-                nested_metadata: Dict[str, Any] = {}
+                nested_metadata_answers: Dict[str, Any] = {}
                 nested_nested_answers: Dict[str, Any] = {}
                 nested_possible_answers: Dict[str, Any] = {}
-
-                from .phase import walk_phase
 
                 for phase in field["phases"]:
                     walk_phase(
                         form,
                         phase,
                         entry_context,
+                        # empty to not add unwanted answers
+                        [],
                         answers,
+                        answersWRTMetadata,
                         True,
-                        nested_metadata,
+                        nested_metadata_answers,
                         nested_nested_answers,
                         flat_answers,
                         nested_possible_answers,
+                        constructed_answers,
                     )
 
                 # Only append if any nested field has metadata answers
                 if canRender and dep_data.get("canRender", True):
-                    if nested_metadata:
-                        metadata_answers[subform_metadata_id][n] = nested_metadata
+                    if nested_metadata_answers:
+                        metadata_answers[subform_metadata_id][
+                            n
+                        ] = nested_metadata_answers
                     if nested_nested_answers:
                         nested_answers[n] = nested_nested_answers
                 if nested_possible_answers:
@@ -284,7 +376,6 @@ def walk_field(
         else:
             # for possible answers
             nested_possible_answers: Dict[str, Any] = {}
-            from .phase import walk_phase
 
             entry_context = (
                 f"{derived_context}{form_context_split_str}__for_possible_answers__"
@@ -294,12 +385,16 @@ def walk_field(
                     form,
                     phase,
                     entry_context,
+                    # empty to not add unwanted answers
+                    [],
                     answers,
+                    answersWRTMetadata,
                     False,
                     metadata_answers,
                     nested_answers,
                     flat_answers,
                     nested_possible_answers,
+                    constructed_answers,
                 )
 
             if nested_possible_answers:
