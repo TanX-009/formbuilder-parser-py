@@ -43,6 +43,7 @@ def walk_field(
     subform_answers = get_subform_answers(derived_context, answers)
 
     metadata_id = field.get("metadata", {}).get("id")
+
     # Constructed answers
     if (
         metadata_id
@@ -63,6 +64,7 @@ def walk_field(
 
     # Metadata answers
     if canRender and metadata_id:
+
         if value:  # regular field has answers
             if metadata_id not in metadata_answers:
                 metadata_answers[metadata_id] = []
@@ -169,7 +171,7 @@ def walk_field(
                         constructed_answers,
                     )
 
-    elif field_type in ["text", "textarea", "number", "password"]:
+    elif field_type in ["text", "textarea", "number", "password", "email"]:
         if value and value[0] != "":
             for trig in field.get("triggers", []):
                 if canRender and dep_data.get("canRender", True):
@@ -282,6 +284,83 @@ def walk_field(
                     possible_answers,
                     constructed_answers,
                 )
+    elif field_type == "fileselectwrtlang":
+        if not field.get("triggers"):
+            return
+
+        files = dep_data.get("files", [])
+        for f in files:
+            filenames_cache[f["id"]] = f["name"]
+
+        for nth_answer in value:
+            # check if the answer is of fileselectwrtlang type i.e. ["uuid", "language"]
+            if not isinstance(nth_answer, list) or len(nth_answer) != 2:
+                continue
+
+            ans_id, _ = nth_answer
+            filename = filenames_cache.get(str(ans_id))
+            if not filename:
+                # re-cache filenames if not found
+                for f in files:
+                    filenames_cache[f["id"]] = f["name"]
+                filename = filenames_cache.get(str(ans_id), "")
+
+            for trig in field.get("triggers", []):
+                trig_copy = trig.copy()
+                trig_copy["title"] = trig_copy.get("title", "") + filename
+                trig_copy["id"] = f"{trig_copy.get('id', '')}_{ans_id}"
+
+                if canRender and dep_data.get("canRender", True):
+                    walk_section(
+                        form,
+                        trig_copy,
+                        context_for_trigger,
+                        metadata_context,
+                        answers,
+                        answersWRTMetadata,
+                        True,
+                        metadata_answers,
+                        nested_answers,
+                        flat_answers,
+                        possible_answers,
+                        constructed_answers,
+                    )
+                else:
+                    walk_section(
+                        form,
+                        trig_copy,
+                        context_for_trigger,
+                        metadata_context,
+                        answers,
+                        answersWRTMetadata,
+                        False,
+                        metadata_answers,
+                        nested_answers,
+                        flat_answers,
+                        possible_answers,
+                        constructed_answers,
+                    )
+
+        # for possible_answers
+        for trig in field.get("triggers", []):
+            trig_copy = trig.copy()
+            trig_copy["title"] = trig_copy.get("title", "") + "__for_possible_answers__"
+            trig_copy["id"] = f"{trig_copy.get('id', '')}___for_possible_answers__"
+            if trig_copy.get("type") == "section":
+                walk_section(
+                    form,
+                    trig_copy,
+                    context_for_trigger,
+                    metadata_context,
+                    answers,
+                    answersWRTMetadata,
+                    False,
+                    metadata_answers,
+                    nested_answers,
+                    flat_answers,
+                    possible_answers,
+                    constructed_answers,
+                )
 
     elif field_type == "subformwtable" and "phases" in field:
         # Only create a metadata entry if the subform itself has metadata.id
@@ -297,7 +376,7 @@ def walk_field(
             # todo use uuid from answersWRTMetadata to construct metadata_context
             # entry_metadata_context = metadata_context
 
-            if derived_metadata_context[-1] == metadata_id:
+            if derived_metadata_context[-1] == metadata_id and nest:
                 for m_id in derived_metadata_context:
                     if m_id in nest:
                         nest = nest[m_id]
