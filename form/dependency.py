@@ -80,6 +80,7 @@ def check_parent_visibility(
     answers: Dict[str, List[Any]],
     context: str,
     dep: dict,
+    async_map: dict[str, Callable],
 ) -> bool:
     can_render = True
 
@@ -93,7 +94,7 @@ def check_parent_visibility(
         parent_def = get_form_def(parent_ctx["woIdx"], form)
         if parent_def:
             parent_dep_data = form_dep_data(
-                form, parent_def, parent_ctx["wIdx"], answers
+                form, parent_def, parent_ctx["wIdx"], answers, async_map
             )
             can_render = can_render and parent_dep_data["canRender"]
 
@@ -139,6 +140,7 @@ async def get_chosen_options_of_dep(
     dep: dict,
     dep_answers: List[Any],
     context_from_path: Dict[str, str],
+    async_map: dict[str, Callable],
 ) -> List[dict]:
     chosen: List[dict] = []
 
@@ -165,7 +167,7 @@ async def get_chosen_options_of_dep(
         "fetchmultiselect",
         "fetchselect",
     }:
-        fetched = await get_form_options(defn["url"], defn["mapping"])
+        fetched = await get_form_options(defn["url"], defn["mapping"], async_map)
         merged = dedupe_form_field_options([defn.get("options", []), fetched])
         chosen = [o for o in merged if o["value"] in dep_answers]
 
@@ -206,6 +208,7 @@ def generate_dep_data(
     answers: Dict[str, List[Any]],
     context: str,
     dep: dict,
+    async_map: dict[str, Callable],
 ):
     can_render = True
     options_promises: List[Callable] = []
@@ -213,7 +216,9 @@ def generate_dep_data(
 
     ctx = resolve_context_path(form, dep["path"], context)
 
-    can_render = can_render and check_parent_visibility(form, answers, context, dep)
+    can_render = can_render and check_parent_visibility(
+        form, answers, context, dep, async_map
+    )
 
     dep_answers = get_form_answer(ctx["wIdx"], answers)
 
@@ -223,7 +228,7 @@ def generate_dep_data(
     elif dep["type"] == "options":
         options_promises.append(
             lambda: get_chosen_options_of_dep(
-                form, context, answers, dep, dep_answers, ctx
+                form, context, answers, dep, dep_answers, ctx, async_map
             )
         )
 
@@ -246,6 +251,7 @@ def form_dep_data(
     node: dict,
     context: str,
     answers: Dict[str, List[Any]],
+    async_map: dict[str, Callable],
 ) -> Dict[str, Any]:
     if not node.get("dependency"):
         return {"canRender": True, "options": None, "files": []}
@@ -258,7 +264,7 @@ def form_dep_data(
     files: List[dict] = []
 
     for dep in node["dependency"]:
-        dep_data = generate_dep_data(form, answers, context, dep)
+        dep_data = generate_dep_data(form, answers, context, dep, async_map)
 
         can_render = can_render and dep_data["canRender"]
         option_promises.extend(dep_data["options"])

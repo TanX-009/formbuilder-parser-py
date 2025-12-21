@@ -1,10 +1,13 @@
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Callable, Dict, Any, List, Optional, Tuple
 from .dependency import form_dep_data
 from .phase import walk_phase
 
 
 async def walk_form(
-    form: dict, answers: dict, answersWRTMetadata: Optional[dict]
+    form: dict,
+    answers: dict,
+    answersWRTMetadata: Optional[dict],
+    async_map: dict[str, Callable] = {},
 ) -> Tuple[
     Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]
 ]:
@@ -27,7 +30,7 @@ async def walk_form(
 
     # collect renderable phases
     for phase in phases:
-        dep_data = form_dep_data(form, phase, derived_context, answers)
+        dep_data = form_dep_data(form, phase, derived_context, answers, async_map)
         if not isinstance(phase, dict):
             print(f"⚠️ skipping invalid phase in form {form_id}")
             continue
@@ -45,6 +48,7 @@ async def walk_form(
                 flat_answers,
                 possible_answers,
                 constructed_answers,
+                async_map,
             )
         else:
             await walk_phase(
@@ -60,6 +64,7 @@ async def walk_form(
                 flat_answers,
                 possible_answers,
                 constructed_answers,
+                async_map,
             )
 
     return (

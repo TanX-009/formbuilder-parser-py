@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Callable, Dict, Any, Optional
 from .constant import form_context_split_str
 from .field import walk_field
 from .dependency import form_dep_data
@@ -17,6 +17,7 @@ async def walk_section(
     flat_answers: Dict[str, Any],
     possible_answers: Dict[str, Any],
     constructed_answers: Dict[str, Any],
+    async_map: dict[str, Callable],
 ) -> None:
     """
     Walk over fields in a section and call walk_field for each field.
@@ -74,7 +75,7 @@ async def walk_section(
             print(f"⚠️ skipping invalid field in section {section_id}")
             continue
 
-        dep_data = form_dep_data(form, field, derived_context, answers)
+        dep_data = form_dep_data(form, field, derived_context, answers, async_map)
 
         field_can_render = canRender and dep_data.get("canRender", True)
 
@@ -110,4 +111,5 @@ async def walk_section(
             nested_possible_answers,
             constructed_answers,
             dep_data,  # 🔑 NEW: pass dep_data explicitly
+            async_map,
         )

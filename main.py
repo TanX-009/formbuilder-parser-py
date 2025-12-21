@@ -22,8 +22,76 @@ async def main():
         "service_ticket": {"document_type": ["asdf"]},
     }
 
+    def get_bp():
+        return {
+            "code": 200,
+            "data": [
+                {
+                    "uuid": "6b2fc1e7-b6cb-4234-9f05-772d75ad73de",
+                    "company_name": "test",
+                    "vat_id": "test",
+                    "customer_number": None,
+                    "original_to_recipient": None,
+                    "delivery_channel": None,
+                    "leitweg_id": None,
+                    "responsible_person_at_bp": None,
+                    "email_of_responsible_person_at_bp": None,
+                    "checkin_format": None,
+                    "checkin_channel": None,
+                    "senders_email": None,
+                    "service_ticket_id": None,
+                    "supedio_id": None,
+                    "avatar": None,
+                    "business_id_num": "etset",
+                    "gln": 1234567890123,
+                    "is_referred": False,
+                    "completed": False,
+                    "invite_link": None,
+                    "invite_data": None,
+                    "submission_status": None,
+                    "file_uuids": None,
+                    "id": 3,
+                    "file_data": None,
+                    "organization_id": None,
+                    "partner_type": "supplier",
+                },
+                {
+                    "uuid": "e8117d11-0b80-41f2-bb28-dff05250657f",
+                    "company_name": "tttt",
+                    "vat_id": "asdf",
+                    "customer_number": None,
+                    "original_to_recipient": None,
+                    "delivery_channel": None,
+                    "leitweg_id": None,
+                    "responsible_person_at_bp": None,
+                    "email_of_responsible_person_at_bp": None,
+                    "checkin_format": None,
+                    "checkin_channel": None,
+                    "senders_email": None,
+                    "service_ticket_id": None,
+                    "supedio_id": None,
+                    "avatar": None,
+                    "business_id_num": "asdf",
+                    "gln": 1234567890123,
+                    "is_referred": False,
+                    "completed": False,
+                    "invite_link": None,
+                    "invite_data": None,
+                    "submission_status": None,
+                    "file_uuids": None,
+                    "id": 4,
+                    "file_data": None,
+                    "organization_id": None,
+                    "partner_type": "supplier",
+                },
+            ],
+            "message": "Operation completed successfully",
+        }
+
+    async_map = {"/api/backend/general/business-partner/all": get_bp}
+
     metadata, nested, flat, possible, constructed = await walk_form(
-        form_json, ans_json, answersWRTMetadata
+        form_json, ans_json, answersWRTMetadata, async_map
     )
 
     print("\n============ Metadata ============\n")

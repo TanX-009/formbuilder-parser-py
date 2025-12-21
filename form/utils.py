@@ -1,4 +1,4 @@
-from typing import Any, List, Dict
+from typing import Any, List
 
 
 def is_file_data(v: Any) -> bool:

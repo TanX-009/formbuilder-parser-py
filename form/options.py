@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional
+from asyncio import iscoroutinefunction
+from typing import Any, Callable, Dict, List, Optional
 import httpx
 
 
@@ -73,6 +74,7 @@ def construct_form_options_from_array(
 async def get_form_options(
     url: str,
     mapping: Dict[str, Any],
+    async_map: dict[str, Callable],
     *,
     debug: bool = False,
     timeout: float = 10.0,
@@ -81,18 +83,47 @@ async def get_form_options(
     Fetch a list of options from a remote API and normalize it
     using the provided mapping.
 
+    - If `async_map[url]` exists, that async function is used instead
+      of making an HTTP request.
+    - Otherwise, falls back to an HTTP GET using httpx.
+
     Supports nested extraction via `mapping["prenest"]`.
     """
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.get(url)
-        response.raise_for_status()
-        data: Any = response.json()
 
+    # ----------------------------
+    # Data fetch
+    # ----------------------------
+    if url in async_map:
+        fetch_fn = async_map[url]
+
+        print(f"Using async_map handler for url: {url}")
+        if iscoroutinefunction(fetch_fn):
+            data: Any = await fetch_fn()
+        else:
+            data: Any = fetch_fn()
+
+    else:
+        print(f"Fetching options via HTTP from: {url}")
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            data: Any = response.json()
+
+    # ----------------------------
+    # Debug output
+    # ----------------------------
     if debug:
-        print(f"Fetch for options from {url}:\n{data}")
+        print(f"Fetched data for options ({url}):\n{data}")
 
+    # ----------------------------
+    # Prenest handling
+    # ----------------------------
     target_array = (
         get_by_path(data, mapping.get("prenest")) if mapping.get("prenest") else data
     )
 
+    # ----------------------------
+    # Normalize to form options
+    # ----------------------------
     return construct_form_options_from_array(target_array, mapping)

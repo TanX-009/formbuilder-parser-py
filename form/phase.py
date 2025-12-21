@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Callable, Dict, Any, Optional
 from .constant import form_context_split_str
 from .section import walk_section
 from .dependency import form_dep_data
@@ -17,6 +17,7 @@ async def walk_phase(
     flat_answers: Dict[str, Any],
     possible_answers: Dict[str, Any],
     constructed_answers: Dict[str, Any],
+    async_map: dict[str, Callable],
 ) -> None:
     phase_id = phase.get("id", "<no-id>")
     derived_context = f"{context}{form_context_split_str}{phase_id}"
@@ -64,7 +65,7 @@ async def walk_phase(
             print(f"⚠️ skipping invalid section in phase {phase_id}")
             continue
 
-        dep_data = form_dep_data(form, section, derived_context, answers)
+        dep_data = form_dep_data(form, section, derived_context, answers, async_map)
         # if the phase can render and the section can render then handle the premium answers
         if canRender and dep_data.get("canRender", True):
             # Pass the nested metadata dict to section
@@ -81,6 +82,7 @@ async def walk_phase(
                 flat_answers,
                 nested_possible_answers,
                 constructed_answers,
+                async_map,
             )
         # else walk for non-premium answers
         else:
@@ -97,4 +99,5 @@ async def walk_phase(
                 flat_answers,
                 nested_possible_answers,
                 constructed_answers,
+                async_map,
             )

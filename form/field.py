@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Callable, Dict, Any, Optional
 
 from form.answer import get_subform_answers
 from .constant import form_context_split_str
@@ -21,6 +21,7 @@ async def walk_field(
     possible_answers: Dict[str, Any],
     constructed_answers: Dict[str, Any],
     dep_data: dict,
+    async_map: dict[str, Callable],
 ) -> None:
     """
     Walk a single field, handle canRender, collect answers under metadata.id, and propagate triggers.
@@ -145,6 +146,7 @@ async def walk_field(
                         flat_answers,
                         possible_answers,
                         constructed_answers,
+                        async_map,
                     )
 
         # ------------------------------------------------------------------
@@ -167,6 +169,7 @@ async def walk_field(
                         flat_answers,
                         possible_answers,
                         constructed_answers,
+                        async_map,
                     )
 
     elif field_type in ["text", "textarea", "number", "password", "email"]:
@@ -185,6 +188,7 @@ async def walk_field(
                     flat_answers,
                     possible_answers,
                     constructed_answers,
+                    async_map,
                 )
         # for possible answers
         else:
@@ -203,6 +207,7 @@ async def walk_field(
                         flat_answers,
                         possible_answers,
                         constructed_answers,
+                        async_map,
                     )
 
     elif field_type == "fileselect":
@@ -229,6 +234,7 @@ async def walk_field(
                     flat_answers,
                     possible_answers,
                     constructed_answers,
+                    async_map,
                 )
         # for possible_answers
         for trig in field.get("triggers", []):
@@ -249,6 +255,7 @@ async def walk_field(
                     flat_answers,
                     possible_answers,
                     constructed_answers,
+                    async_map,
                 )
     elif field_type == "fileselectwrtlang":
         if not field.get("triggers"):
@@ -289,6 +296,7 @@ async def walk_field(
                     flat_answers,
                     possible_answers,
                     constructed_answers,
+                    async_map,
                 )
 
         # for possible_answers
@@ -310,6 +318,7 @@ async def walk_field(
                     flat_answers,
                     possible_answers,
                     constructed_answers,
+                    async_map,
                 )
 
     elif field_type == "subformwtable" and "phases" in field:
@@ -352,6 +361,7 @@ async def walk_field(
                                 flat_answers,
                                 possible_answers,
                                 constructed_answers,
+                                async_map,
                             )
 
         if canRender and subform_metadata_id:
@@ -389,6 +399,7 @@ async def walk_field(
                         flat_answers,
                         nested_possible_answers,
                         constructed_answers,
+                        async_map,
                     )
 
                 # Only append if any nested field has metadata answers
@@ -424,6 +435,7 @@ async def walk_field(
                     flat_answers,
                     nested_possible_answers,
                     constructed_answers,
+                    async_map,
                 )
 
             if nested_possible_answers:
