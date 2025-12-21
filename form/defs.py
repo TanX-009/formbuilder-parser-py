@@ -1,82 +1,122 @@
-from typing import List, Dict, Optional, Any, Union
+from typing import Dict, Literal, Optional, Union
 from .constant import form_context_split_str
+from .field_validator import is_form_field
 
-# --- Global caches ---
+# ---------------------------------------------------------------------
+# Global caches
+# ---------------------------------------------------------------------
+
+# context -> node
 form_field_defs_cache: Dict[str, dict] = {}
 
-# Cache for isSectionTriggeredOne
-is_section_triggered_one_cache: Dict[str, Union[bool, str]] = {}
+# context -> False | {"parent": parent_context, "field": field_context}
+is_section_triggered_one_cache: Dict[str, Union[Literal[False], Dict[str, str]]] = {}
 
 
-def is_section_triggered_one(form: dict, context: str) -> Union[bool, Optional[dict]]:
+# ---------------------------------------------------------------------
+# is_section_triggered_one
+# ---------------------------------------------------------------------
+def is_section_triggered_one(
+    form: dict, context: str
+) -> Union[Literal[False], Dict[str, dict]]:
     """
-    Checks if the section at `context` was triggered from any parent section's field.
-    Returns False if not triggered, or the parent section dict if triggered.
+    Checks whether the section at `context` was triggered by a field
+    in its parent section.
+
+    Returns:
+      False
+      or { "parent": <parent_section_def>, "field": <field_def> }
     """
+
+    # ---- Cache hit ----
     if context in is_section_triggered_one_cache:
         cached = is_section_triggered_one_cache[context]
-        if not cached:  # cached is False
+        if not cached:
             return False
-        # cached is guaranteed to be str here
-        parent_def = get_form_def(str(cached), form)
-        if parent_def and parent_def.get("type") == "section":
-            return parent_def
+
+        parent_def = get_form_def(cached["parent"], form)
+        field_def = get_form_def(cached["field"], form)
+
+        if (
+            parent_def
+            and parent_def.get("type") == "section"
+            and field_def
+            and is_form_field(field_def)
+        ):
+            return {"parent": parent_def, "field": field_def}
+
         return False
 
-    path_parts = context.split(form_context_split_str)
-    parent_path_parts = path_parts[:-1]
-    parent_context = form_context_split_str.join(parent_path_parts)
+    path = context.split(form_context_split_str)
+    parent_path = path[:-1]
+    parent_context = form_context_split_str.join(parent_path)
+    target_section_id = path[-1]
 
     parent_def = get_form_def(parent_context, form)
     if not parent_def or parent_def.get("type") != "section":
         is_section_triggered_one_cache[context] = False
         return False
 
-    target_section_id = path_parts[-1]
-
     for field in parent_def.get("fields", []):
-        # Check field triggers
+        field_context = parent_context + form_context_split_str + field["id"]
+
+        # --- Field triggers ---
         for trig in field.get("triggers", []):
             if trig.get("id") == target_section_id:
-                is_section_triggered_one_cache[context] = parent_context
-                return parent_def
+                is_section_triggered_one_cache[context] = {
+                    "parent": parent_context,
+                    "field": field_context,
+                }
+                return {"parent": parent_def, "field": field}
 
-        # Check option triggers
-        for option in field.get("options", []):
-            for trig in option.get("triggers", []):
-                if trig.get("id") == target_section_id:
-                    is_section_triggered_one_cache[context] = parent_context
-                    return parent_def
+        # --- Option triggers ---
+        if "options" in field:
+            for opt in field.get("options", []):
+                for trig in opt.get("triggers", []):
+                    if trig.get("id") == target_section_id:
+                        is_section_triggered_one_cache[context] = {
+                            "parent": parent_context,
+                            "field": field_context,
+                        }
+                        return {"parent": parent_def, "field": field}
 
     is_section_triggered_one_cache[context] = False
     return False
 
 
+# ---------------------------------------------------------------------
+# get_form_def
+# ---------------------------------------------------------------------
 def get_form_def(context: str, form: dict) -> Optional[dict]:
     """
-    Retrieves the node (phase/section/field) at the given context.
+    Resolves a form node (phase / section / field / triggered section)
+    for a given context path.
+
     Supports:
-    - Phase → Section → Field hierarchy
-    - Subform fields (with "*" marker)
-    - Triggered sections (recursively nested)
-    - Caching for phases, sections, and fields
+    - Phase → Section → Field
+    - Triggered sections
+    - Subform fields using "*"
+    - Caching
     """
+
     if context in form_field_defs_cache:
         return form_field_defs_cache[context]
 
     split = context.split(form_context_split_str)
-    current_form = form
-    current_phase = None
-    current_section = None
-    current_field = None
+
+    current_form: Optional[dict] = form
+    current_phase: Optional[dict] = None
+    current_section: Optional[dict] = None
+    current_field: Optional[dict] = None
 
     for idx in range(1, len(split)):
         key = split[idx]
 
-        # --- Phase level ---
+        # ---- Phase ----
         if current_form:
             phase = next(
-                (p for p in current_form.get("phases", []) if p["id"] == key), None
+                (p for p in current_form.get("phases", []) if p["id"] == key),
+                None,
             )
             if not phase:
                 return None
@@ -86,53 +126,49 @@ def get_form_def(context: str, form: dict) -> Optional[dict]:
             current_section = None
             current_field = None
 
-            # cache & return if last
-            if idx == len(split) - 1 and key == current_phase["id"]:
-                form_field_defs_cache[context] = current_phase
-                return current_phase
+            if idx == len(split) - 1:
+                form_field_defs_cache[context] = phase
+                return phase
             continue
 
-        # --- Section level ---
+        # ---- Section ----
         if current_phase:
             section = next(
-                (s for s in current_phase.get("sections", []) if s["id"] == key), None
+                (s for s in current_phase.get("sections", []) if s["id"] == key),
+                None,
             )
             if not section:
                 return None
 
-            current_form = None
             current_phase = None
             current_section = section
             current_field = None
 
-            # cache & return if last
-            if idx == len(split) - 1 and key == current_section["id"]:
-                form_field_defs_cache[context] = current_section
-                return current_section
+            if idx == len(split) - 1:
+                form_field_defs_cache[context] = section
+                return section
             continue
 
-        # --- Field / Trigger level ---
+        # ---- Field / Triggered Section ----
         if current_section:
-            # 1) Direct field match
+            # 1) Direct field
             field = next(
-                (f for f in current_section.get("fields", []) if f["id"] == key), None
+                (f for f in current_section.get("fields", []) if f["id"] == key),
+                None,
             )
             if field:
-                current_form = None
-                current_phase = None
                 current_section = None
                 current_field = field
 
-                # cache & return if last
                 if idx == len(split) - 1:
-                    form_field_defs_cache[context] = current_field
-                    return current_field
+                    form_field_defs_cache[context] = field
+                    return field
                 continue
 
-            # 2) Triggered section match
+            # 2) Triggered section
             matched_trigger = None
             for field_i in current_section.get("fields", []):
-                # inside options
+                # option triggers
                 for opt in field_i.get("options", []):
                     for trig in opt.get("triggers", []):
                         if trig.get("id") == key:
@@ -141,7 +177,7 @@ def get_form_def(context: str, form: dict) -> Optional[dict]:
                     if matched_trigger:
                         break
 
-                # direct field triggers
+                # field triggers
                 for trig in field_i.get("triggers", []):
                     if trig.get("id") == key:
                         matched_trigger = trig
@@ -151,29 +187,26 @@ def get_form_def(context: str, form: dict) -> Optional[dict]:
                     break
 
             if matched_trigger:
-                current_form = None
-                current_phase = None
                 current_section = matched_trigger
                 current_field = None
 
-                # cache & return if last
-                if idx == len(split) - 1 and key == matched_trigger["id"]:
-                    form_field_defs_cache[context] = current_section
-                    return current_section
+                if idx == len(split) - 1:
+                    form_field_defs_cache[context] = matched_trigger
+                    return matched_trigger
                 continue
 
             return None
 
-        # --- Subform handling ---
+        # ---- Subform ----
         if current_field:
             if idx == len(split) - 1:
                 form_field_defs_cache[context] = current_field
                 return current_field
 
             if current_field.get("type") == "subformwtable":
-                star_marker = split[idx]
-                if star_marker != "*":
+                if split[idx] != "*":
                     return None
+
                 current_form = {"phases": current_field.get("phases", [])}
                 current_phase = None
                 current_section = None

@@ -16,8 +16,21 @@ def load_json(file_path: str):
 
 
 async def main():
-    form_json = load_json("onboarding.json")
-    ans_json = load_json("ans_in.json")
+    if len(sys.argv) != 3:
+        print("Usage: python main.py <form_definition.json> <answers.json>")
+        sys.exit(1)
+
+    form_file = sys.argv[1]
+    ans_file = sys.argv[2]
+
+    # answers = test_all_inclusive.get("answers")
+    # servic_type = test_all_inclusive.get("service_type")
+    # print(servic_type)
+    # bps = test_all_inclusive.get("business_partners")
+    # print(bps, len(bps))
+
+    form_json = load_json(form_file)
+    ans_json = load_json(ans_file)
     answersWRTMetadata = {
         "service_ticket": {"document_type": ["asdf"]},
     }

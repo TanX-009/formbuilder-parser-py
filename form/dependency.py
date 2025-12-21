@@ -1,36 +1,43 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Callable
 from .constant import form_context_split_str
-from .answer import get_form_answer, are_form_answers_equal
+from .answer import (
+    get_form_answer,
+    are_form_answers_equal,
+    has_answer,
+)
 from .defs import get_form_def, is_section_triggered_one
-from .util import fast_hash, has_answer, is_file_data_array
+from .util import is_file_data_array, dedupe_form_field_options
+from .options import get_form_options
 
 
-# --- Dependency Cache ---
+# ---------------------------------------------------------------------
+# Dependency Cache (disabled like TS)
+# ---------------------------------------------------------------------
 _dep_cache: Dict[str, Dict[str, Any]] = {}
 
 
 def reset_dep_cache():
-    """Reset the dependency cache"""
     global _dep_cache
     _dep_cache = {}
 
 
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
 def resolve_context_path(
     form: dict, dep_path: List[str], context: str
 ) -> Dict[str, str]:
-    """
-    Resolves a dependency path that may contain '*' wildcards into
-    a full context string by replacing '*' with context parts.
-    """
     context_parts = context.split(form_context_split_str)
-    resolved_path = [
-        (context_parts[i + 1] if p == "*" and (i + 1) < len(context_parts) else p)
+
+    resolved = [
+        context_parts[i + 1] if p == "*" and i + 1 < len(context_parts) else p
         for i, p in enumerate(dep_path)
     ]
+
     return {
         "wIdx": form["id"]
         + form_context_split_str
-        + form_context_split_str.join(resolved_path),
+        + form_context_split_str.join(resolved),
         "woIdx": form["id"]
         + form_context_split_str
         + form_context_split_str.join(dep_path),
@@ -43,170 +50,228 @@ def is_triggered_section_visible(
     answers: Dict[str, List[Any]],
     context: str,
 ) -> bool:
-    """
-    Checks if a section with triggered_section_id is visible by walking through
-    parent_section’s fields and their triggers/options.
-    """
     for field in parent_section.get("fields", []):
-        field_path = [context, field["id"]]
-        field_context = form_context_split_str.join(field_path)
+        field_context = context + form_context_split_str + field["id"]
         answer = get_form_answer(field_context, answers)
 
-        # --- Field triggers ---
+        # field triggers
         for trig in field.get("triggers", []):
-            if trig.get("id") == triggered_section_id and len(answer) > 0:
+            if trig["id"] == triggered_section_id and answer:
                 return True
 
-        # --- Option triggers ---
         if "options" not in field:
             continue
 
-        for option in field["options"]:
-            for trig in option.get("triggers", []):
-                if trig.get("id") == triggered_section_id:
-                    if has_answer(answer, option.get("value")):
+        # option triggers
+        for opt in field["options"]:
+            for trig in opt.get("triggers", []):
+                if trig["id"] == triggered_section_id:
+                    if has_answer(answer, opt.get("value")):
                         return True
+
     return False
 
 
-def form_dep_data(
-    form: dict, node: dict, context: str, answers: Dict[str, List[Any]]
-) -> Dict[str, Any]:
-    """
-    Resolves dependency data for a given form node (field or section).
-    Handles visibility, options, and file dependencies with recursive parent evaluation.
-    """
-    if not node.get("dependency"):
-        return {"canRender": True, "options": [], "files": []}
-    if not answers:
-        return {"canRender": False, "options": [], "files": []}
-
+# ---------------------------------------------------------------------
+# Parent visibility (CRITICAL)
+# ---------------------------------------------------------------------
+def check_parent_visibility(
+    form: dict,
+    answers: Dict[str, List[Any]],
+    context: str,
+    dep: dict,
+) -> bool:
     can_render = True
-    aggregated_options: List[dict] = []
-    aggregated_files: List[dict] = []
 
-    for dep in node.get("dependency", []):
-        dep_hash = fast_hash(dep)
+    for i in range(len(dep["path"]) - 2, -1, -1):
+        if not can_render:
+            break
 
-        # --- Check cache first ---
-        # if dep_hash in _dep_cache:
-        #     cached = _dep_cache[dep_hash]
-        #     can_render = can_render and cached["canRender"]
-        #     aggregated_options.extend(cached["options"])
-        #     aggregated_files.extend(cached["files"])
-        #     continue
+        parent_path = dep["path"][: i + 1]
+        parent_ctx = resolve_context_path(form, parent_path, context)
 
-        this_can_render = True
-        this_options: List[dict] = []
-        this_files: List[dict] = []
-
-        context_from_path = resolve_context_path(form, dep["path"], context)
-
-        # --- Recursive parent dependency evaluation ---
-        for i in range(len(dep["path"]) - 2, -1, -1):
-            parent_path = dep["path"][: i + 1]
-            parent_context = resolve_context_path(form, parent_path, context)
-            def_from_target = get_form_def(parent_context["woIdx"], form)
-
-            if def_from_target:
-                parent_dep_data = form_dep_data(
-                    form, def_from_target, parent_context["wIdx"], answers
-                )
-                this_can_render = this_can_render and parent_dep_data["canRender"]
-
-            # --- Handle triggered sections visibility ---
-            triggered_section_parent = is_section_triggered_one(
-                form, parent_context["woIdx"]
+        parent_def = get_form_def(parent_ctx["woIdx"], form)
+        if parent_def:
+            parent_dep_data = form_dep_data(
+                form, parent_def, parent_ctx["wIdx"], answers
             )
-            if not triggered_section_parent:
-                continue
+            can_render = can_render and parent_dep_data["canRender"]
 
-            parent_parent_path = parent_path[:-1]
-            parent_parent_context = (
-                form["id"]
-                + form_context_split_str
-                + form_context_split_str.join(parent_parent_path)
+        triggered = is_section_triggered_one(form, parent_ctx["woIdx"])
+        if not triggered or not isinstance(triggered, dict):
+            continue
+
+        parent_parent_path = parent_path[:-1]
+        parent_parent_ctx = (
+            form["id"]
+            + form_context_split_str
+            + form_context_split_str.join(parent_parent_path)
+        )
+
+        can_render = can_render and is_triggered_section_visible(
+            triggered["parent"],
+            dep["path"][len(parent_path) - 1],
+            answers,
+            parent_parent_ctx,
+        )
+
+    return can_render
+
+
+# ---------------------------------------------------------------------
+# Dependency checks
+# ---------------------------------------------------------------------
+def check_visibility_dep(dep_answers: List[Any], dep: dict) -> bool:
+    if not dep.get("answers") and dep_answers:
+        return True
+
+    for ans in dep.get("answers", []):
+        if are_form_answers_equal(ans, dep_answers):
+            return True
+
+    return False
+
+
+async def get_chosen_options_of_dep(
+    form: dict,
+    context: str,
+    answers: Dict[str, List[Any]],
+    dep: dict,
+    dep_answers: List[Any],
+    context_from_path: Dict[str, str],
+) -> List[dict]:
+    chosen: List[dict] = []
+
+    if not dep_answers:
+        return chosen
+
+    defn = get_form_def(context_from_path["woIdx"], form)
+    if not defn:
+        return chosen
+
+    # static options
+    if defn.get("type") in {
+        "checkbox",
+        "radio",
+        "multiselect",
+        "select",
+    }:
+        chosen = [opt for opt in defn.get("options", []) if opt["value"] in dep_answers]
+
+    # fetched options
+    elif defn.get("type") in {
+        "fetchcheckbox",
+        "fetchradio",
+        "fetchmultiselect",
+        "fetchselect",
+    }:
+        fetched = await get_form_options(defn["url"], defn["mapping"])
+        merged = dedupe_form_field_options([defn.get("options", []), fetched])
+        chosen = [o for o in merged if o["value"] in dep_answers]
+
+    # exclusions
+    for ex in dep.get("exclude", []):
+        ex_ctx = resolve_context_path(form, ex, context)
+        exclude_vals = get_form_answer(ex_ctx["wIdx"], answers)
+        chosen = [o for o in chosen if o["id"] not in exclude_vals]
+
+    return chosen
+
+
+def get_files_of_dep(
+    form: dict,
+    context: str,
+    answers: Dict[str, List[Any]],
+    dep_answers: List[Any],
+    dep: dict,
+) -> List[dict]:
+    if not dep_answers or not is_file_data_array(dep_answers):
+        return []
+
+    files = list(dep_answers)
+
+    for ex in dep.get("exclude", []):
+        ex_ctx = resolve_context_path(form, ex, context)
+        exclude_vals = get_form_answer(ex_ctx["wIdx"], answers)
+        files = [f for f in files if f["id"] not in exclude_vals]
+
+    return files
+
+
+# ---------------------------------------------------------------------
+# Generate dep data (single dependency)
+# ---------------------------------------------------------------------
+def generate_dep_data(
+    form: dict,
+    answers: Dict[str, List[Any]],
+    context: str,
+    dep: dict,
+):
+    can_render = True
+    options_promises: List[Callable] = []
+    files: List[dict] = []
+
+    ctx = resolve_context_path(form, dep["path"], context)
+
+    can_render = can_render and check_parent_visibility(form, answers, context, dep)
+
+    dep_answers = get_form_answer(ctx["wIdx"], answers)
+
+    if dep["type"] == "visibility":
+        can_render = can_render and check_visibility_dep(dep_answers, dep)
+
+    elif dep["type"] == "options":
+        options_promises.append(
+            lambda: get_chosen_options_of_dep(
+                form, context, answers, dep, dep_answers, ctx
             )
+        )
 
-            this_can_render = (
-                this_can_render
-                and not isinstance(triggered_section_parent, bool)
-                and is_triggered_section_visible(
-                    triggered_section_parent,
-                    dep["path"][len(parent_path) - 1],
-                    answers,
-                    parent_parent_context,
-                )
-            )
-
-        # --- Evaluate dependency type ---
-        dep_answers = get_form_answer(context_from_path["wIdx"], answers)
-        dep_type = dep.get("type")
-
-        if dep_type == "visibility":
-            this_visible = False
-            if not dep.get("answers") and dep_answers:
-                this_visible = True
-            elif dep.get("answers"):
-                for answer in dep["answers"]:
-                    if are_form_answers_equal(answer, dep_answers):
-                        this_visible = True
-                        break
-            this_can_render = this_can_render and this_visible
-
-        elif dep_type == "options":
-            chosen_options: List[dict] = []
-            if dep_answers:
-                def_from_target = get_form_def(context_from_path["woIdx"], form)
-
-                if def_from_target and def_from_target.get("type") in [
-                    "checkbox",
-                    "radio",
-                    "dropdown-multi-select",
-                    "dropdown-single-select",
-                ]:
-                    options_from_target = def_from_target.get("options", [])
-
-                    chosen_options = [
-                        opt
-                        for opt in options_from_target
-                        if opt["value"] in dep_answers
-                    ]
-
-            this_options = chosen_options
-            this_can_render = this_can_render and len(chosen_options) > 0
-
-        elif dep_type == "files":
-            final_files: List[dict] = []
-            if dep_answers and is_file_data_array(dep_answers):
-                final_files = dep_answers
-
-                # handle exclusions
-                for exclude_path in dep.get("exclude", []):
-                    exclude_context = resolve_context_path(form, exclude_path, context)
-                    exclude_answers = get_form_answer(exclude_context["wIdx"], answers)
-                    final_files = [
-                        f for f in final_files if f["id"] not in exclude_answers
-                    ]
-            this_files = final_files
-            this_can_render = this_can_render and len(final_files) > 0
-
-            this_files = final_files
-            this_can_render = this_can_render and len(final_files) > 0
-
-        # --- Aggregate and cache ---
-        can_render = can_render and this_can_render
-        aggregated_options.extend(this_options)
-        aggregated_files.extend(this_files)
-
-        _dep_cache[dep_hash] = {
-            "canRender": this_can_render,
-            "options": this_options,
-            "files": this_files,
-        }
+    elif dep["type"] == "files":
+        files = get_files_of_dep(form, context, answers, dep_answers, dep)
+        can_render = can_render and bool(files)
 
     return {
         "canRender": can_render,
-        "options": aggregated_options,
-        "files": aggregated_files,
+        "options": options_promises,
+        "files": files,
+    }
+
+
+# ---------------------------------------------------------------------
+# Public API (matches TS formDepData)
+# ---------------------------------------------------------------------
+def form_dep_data(
+    form: dict,
+    node: dict,
+    context: str,
+    answers: Dict[str, List[Any]],
+) -> Dict[str, Any]:
+    if not node.get("dependency"):
+        return {"canRender": True, "options": None, "files": []}
+
+    if not answers:
+        return {"canRender": False, "options": None, "files": []}
+
+    can_render = True
+    option_promises: List[Callable] = []
+    files: List[dict] = []
+
+    for dep in node["dependency"]:
+        dep_data = generate_dep_data(form, answers, context, dep)
+
+        can_render = can_render and dep_data["canRender"]
+        option_promises.extend(dep_data["options"])
+        files.extend(dep_data["files"])
+
+    async def options_resolver():
+        results = []
+        for fn in option_promises:
+            results.append(await fn())
+        return dedupe_form_field_options(results)
+
+    return {
+        "canRender": can_render,
+        "options": options_resolver if option_promises else None,
+        "files": files,
     }

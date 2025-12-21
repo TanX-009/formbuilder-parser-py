@@ -2,13 +2,12 @@ from typing import Dict, Any, Optional
 
 from form.answer import get_subform_answers
 from .constant import form_context_split_str
-from .dependency import form_dep_data
 
 # Cache for file id → filename
 filenames_cache: Dict[str, str] = {}
 
 
-def walk_field(
+async def walk_field(
     form: dict,
     field: dict,
     context: str,
@@ -21,6 +20,7 @@ def walk_field(
     flat_answers: Dict[str, Any],
     possible_answers: Dict[str, Any],
     constructed_answers: Dict[str, Any],
+    dep_data: dict,
 ) -> None:
     """
     Walk a single field, handle canRender, collect answers under metadata.id, and propagate triggers.
@@ -32,12 +32,6 @@ def walk_field(
     derived_context = f"{context}{form_context_split_str}{field_id}"
     derived_metadata_context = []
     derived_metadata_context.extend(metadata_context)
-
-    # dependency data
-    dep_data = form_dep_data(form, field, derived_context, answers)
-    # if not dep_data.get("canRender", True):
-    #     print(f"🔒 Field {field_id} not renderable, skipping")
-    #     return
 
     value = answers.get(derived_context, [])
     subform_answers = get_subform_answers(derived_context, answers)
@@ -105,58 +99,62 @@ def walk_field(
     # Handle triggers
     if field_type in [
         "radio",
-        "dropdown-single-select",
+        "select",
         "checkbox",
-        "dropdown-multi-select",
+        "multiselect",
+        "fetchradio",
+        "fetchselect",
+        "fetchcheckbox",
+        "fetchmultiselect",
     ]:
+        # Merge static + dependency options (dedupe by value if needed)
+        all_options = []
+        seen_values = set()
+
+        for opt in field.get("options", []):
+            val = opt.get("value")
+            if val not in seen_values:
+                seen_values.add(val)
+                all_options.append(opt)
+
+        for opt in dep_data.get("options", []):
+            val = opt.get("value")
+            if val not in seen_values:
+                seen_values.add(val)
+                all_options.append(opt)
+
+        # ------------------------------------------------------------------
+        # Selected options
+        # ------------------------------------------------------------------
         selected_opts = [
-            opt
-            for opt in field.get("options", [])
-            for sel in value
-            if sel == opt.get("value")
+            opt for opt in all_options for sel in value if sel == opt.get("value")
         ]
         for opt in selected_opts:
             for trig in opt.get("triggers", []):
                 if trig.get("type") == "section":
-                    if canRender and dep_data.get("canRender", True):
-                        walk_section(
-                            form,
-                            trig,
-                            context_for_trigger,
-                            metadata_context,
-                            answers,
-                            answersWRTMetadata,
-                            True,
-                            metadata_answers,
-                            nested_answers,
-                            flat_answers,
-                            possible_answers,
-                            constructed_answers,
-                        )
-                    else:
-                        walk_section(
-                            form,
-                            trig,
-                            context_for_trigger,
-                            metadata_context,
-                            answers,
-                            answersWRTMetadata,
-                            False,
-                            metadata_answers,
-                            nested_answers,
-                            flat_answers,
-                            possible_answers,
-                            constructed_answers,
-                        )
+                    await walk_section(
+                        form,
+                        trig,
+                        context_for_trigger,
+                        metadata_context,
+                        answers,
+                        answersWRTMetadata,
+                        bool(canRender and dep_data.get("canRender", True)),
+                        metadata_answers,
+                        nested_answers,
+                        flat_answers,
+                        possible_answers,
+                        constructed_answers,
+                    )
 
-        # for possible answers
-        unselected_opts = [
-            opt for opt in field.get("options", []) if opt.get("value") not in value
-        ]
+        # ------------------------------------------------------------------
+        # Unselected options → possible answers
+        # ------------------------------------------------------------------
+        unselected_opts = [opt for opt in all_options if opt.get("value") not in value]
         for opt in unselected_opts:
             for trig in opt.get("triggers", []):
                 if trig.get("type") == "section":
-                    walk_section(
+                    await walk_section(
                         form,
                         trig,
                         context_for_trigger,
@@ -174,41 +172,25 @@ def walk_field(
     elif field_type in ["text", "textarea", "number", "password", "email"]:
         if value and value[0] != "":
             for trig in field.get("triggers", []):
-                if canRender and dep_data.get("canRender", True):
-                    walk_section(
-                        form,
-                        trig,
-                        context_for_trigger,
-                        metadata_context,
-                        answers,
-                        answersWRTMetadata,
-                        True,
-                        metadata_answers,
-                        nested_answers,
-                        flat_answers,
-                        possible_answers,
-                        constructed_answers,
-                    )
-                else:
-                    walk_section(
-                        form,
-                        trig,
-                        context_for_trigger,
-                        metadata_context,
-                        answers,
-                        answersWRTMetadata,
-                        False,
-                        metadata_answers,
-                        nested_answers,
-                        flat_answers,
-                        possible_answers,
-                        constructed_answers,
-                    )
+                await walk_section(
+                    form,
+                    trig,
+                    context_for_trigger,
+                    metadata_context,
+                    answers,
+                    answersWRTMetadata,
+                    bool(canRender and dep_data.get("canRender", True)),
+                    metadata_answers,
+                    nested_answers,
+                    flat_answers,
+                    possible_answers,
+                    constructed_answers,
+                )
         # for possible answers
         else:
             for trig in field.get("triggers", []):
                 if trig.get("type") == "section":
-                    walk_section(
+                    await walk_section(
                         form,
                         trig,
                         context_for_trigger,
@@ -234,43 +216,27 @@ def walk_field(
                 trig_copy = trig.copy()
                 trig_copy["title"] = trig_copy.get("title", "") + filename
                 trig_copy["id"] = f"{trig_copy.get('id', '')}_{ans_id}"
-                if canRender and dep_data.get("canRender", True):
-                    walk_section(
-                        form,
-                        trig_copy,
-                        context_for_trigger,
-                        metadata_context,
-                        answers,
-                        answersWRTMetadata,
-                        True,
-                        metadata_answers,
-                        nested_answers,
-                        flat_answers,
-                        possible_answers,
-                        constructed_answers,
-                    )
-                else:
-                    walk_section(
-                        form,
-                        trig_copy,
-                        context_for_trigger,
-                        metadata_context,
-                        answers,
-                        answersWRTMetadata,
-                        False,
-                        metadata_answers,
-                        nested_answers,
-                        flat_answers,
-                        possible_answers,
-                        constructed_answers,
-                    )
+                await walk_section(
+                    form,
+                    trig_copy,
+                    context_for_trigger,
+                    metadata_context,
+                    answers,
+                    answersWRTMetadata,
+                    bool(canRender and dep_data.get("canRender", True)),
+                    metadata_answers,
+                    nested_answers,
+                    flat_answers,
+                    possible_answers,
+                    constructed_answers,
+                )
         # for possible_answers
         for trig in field.get("triggers", []):
             trig_copy = trig.copy()
             trig_copy["title"] = trig_copy.get("title", "") + "__for_possible_answers__"
             trig_copy["id"] = f"{trig_copy.get('id', '')}___for_possible_answers__"
             if trig_copy.get("type") == "section":
-                walk_section(
+                await walk_section(
                     form,
                     trig_copy,
                     context_for_trigger,
@@ -310,36 +276,20 @@ def walk_field(
                 trig_copy["title"] = trig_copy.get("title", "") + filename
                 trig_copy["id"] = f"{trig_copy.get('id', '')}_{ans_id}"
 
-                if canRender and dep_data.get("canRender", True):
-                    walk_section(
-                        form,
-                        trig_copy,
-                        context_for_trigger,
-                        metadata_context,
-                        answers,
-                        answersWRTMetadata,
-                        True,
-                        metadata_answers,
-                        nested_answers,
-                        flat_answers,
-                        possible_answers,
-                        constructed_answers,
-                    )
-                else:
-                    walk_section(
-                        form,
-                        trig_copy,
-                        context_for_trigger,
-                        metadata_context,
-                        answers,
-                        answersWRTMetadata,
-                        False,
-                        metadata_answers,
-                        nested_answers,
-                        flat_answers,
-                        possible_answers,
-                        constructed_answers,
-                    )
+                await walk_section(
+                    form,
+                    trig_copy,
+                    context_for_trigger,
+                    metadata_context,
+                    answers,
+                    answersWRTMetadata,
+                    bool(canRender and dep_data.get("canRender", True)),
+                    metadata_answers,
+                    nested_answers,
+                    flat_answers,
+                    possible_answers,
+                    constructed_answers,
+                )
 
         # for possible_answers
         for trig in field.get("triggers", []):
@@ -347,7 +297,7 @@ def walk_field(
             trig_copy["title"] = trig_copy.get("title", "") + "__for_possible_answers__"
             trig_copy["id"] = f"{trig_copy.get('id', '')}___for_possible_answers__"
             if trig_copy.get("type") == "section":
-                walk_section(
+                await walk_section(
                     form,
                     trig_copy,
                     context_for_trigger,
@@ -389,7 +339,7 @@ def walk_field(
                         entry_metadata_context.append(k)
 
                         for phase in field["phases"]:
-                            walk_phase(
+                            await walk_phase(
                                 form,
                                 phase,
                                 entry_context,
@@ -425,7 +375,7 @@ def walk_field(
                 nested_possible_answers: Dict[str, Any] = {}
 
                 for phase in field["phases"]:
-                    walk_phase(
+                    await walk_phase(
                         form,
                         phase,
                         entry_context,
@@ -460,7 +410,7 @@ def walk_field(
                 f"{derived_context}{form_context_split_str}__for_possible_answers__"
             )
             for phase in field["phases"]:
-                walk_phase(
+                await walk_phase(
                     form,
                     phase,
                     entry_context,

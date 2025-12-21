@@ -3,7 +3,7 @@ from .dependency import form_dep_data
 from .phase import walk_phase
 
 
-def walk_form(
+async def walk_form(
     form: dict, answers: dict, answersWRTMetadata: Optional[dict]
 ) -> Tuple[
     Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]
@@ -32,7 +32,7 @@ def walk_form(
             print(f"⚠️ skipping invalid phase in form {form_id}")
             continue
         if dep_data.get("canRender", True):
-            walk_phase(
+            await walk_phase(
                 form,
                 phase,
                 derived_context,
@@ -47,7 +47,7 @@ def walk_form(
                 constructed_answers,
             )
         else:
-            walk_phase(
+            await walk_phase(
                 form,
                 phase,
                 derived_context,

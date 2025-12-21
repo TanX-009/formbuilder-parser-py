@@ -4,7 +4,7 @@ from .section import walk_section
 from .dependency import form_dep_data
 
 
-def walk_phase(
+async def walk_phase(
     form: dict,
     phase: dict,
     context: str,
@@ -68,7 +68,7 @@ def walk_phase(
         # if the phase can render and the section can render then handle the premium answers
         if canRender and dep_data.get("canRender", True):
             # Pass the nested metadata dict to section
-            walk_section(
+            await walk_section(
                 form,
                 section,
                 derived_context,
@@ -84,7 +84,7 @@ def walk_phase(
             )
         # else walk for non-premium answers
         else:
-            walk_section(
+            await walk_section(
                 form,
                 section,
                 derived_context,

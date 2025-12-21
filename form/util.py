@@ -1,5 +1,5 @@
 import json
-from typing import Any, List
+from typing import Any, Dict, List
 
 # -----------------------------
 # Stable hash functions
@@ -76,3 +76,19 @@ def has_answer(answers: List[Any], value: dict) -> bool:
             return True
 
     return False
+
+
+def dedupe_form_field_options(
+    options_list: List[List[Dict[str, str]]],
+) -> List[Dict[str, str]]:
+    """
+    Deduplicate form field options by `value`.
+    Last occurrence wins (matches TS Map behavior).
+    """
+    deduped: Dict[str, Dict[str, str]] = {}
+
+    for opts in options_list:
+        for opt in opts:
+            deduped[opt["value"]] = opt
+
+    return list(deduped.values())
