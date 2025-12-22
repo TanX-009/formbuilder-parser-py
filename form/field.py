@@ -1,6 +1,7 @@
 from typing import Callable, Dict, Any, Optional
 
-from form.answer import get_subform_answers
+from .answer import get_subform_answers
+from .sanitize import sanitize_for_form, unsanitize_for_form
 from .constant import form_context_split_str
 
 # Cache for file id → filename
@@ -342,7 +343,7 @@ async def walk_field(
                 if nest != answersWRTMetadata and isinstance(nest, dict):
                     for k, _ in nest.items():
 
-                        entry_context = f"{derived_context}{form_context_split_str}{k}"
+                        entry_context = f"{derived_context}{form_context_split_str}{sanitize_for_form(k)}"
                         entry_metadata_context = []
                         entry_metadata_context.extend(derived_metadata_context)
                         entry_metadata_context.append(k)
@@ -406,12 +407,12 @@ async def walk_field(
                 if canRender and dep_data.get("canRender", True):
                     if nested_metadata_answers:
                         metadata_answers[subform_metadata_id][
-                            n
+                            unsanitize_for_form(n)
                         ] = nested_metadata_answers
                     if nested_nested_answers:
-                        nested_answers[n] = nested_nested_answers
+                        nested_answers[unsanitize_for_form(n)] = nested_nested_answers
                 if nested_possible_answers:
-                    possible_answers[n] = nested_possible_answers
+                    possible_answers[unsanitize_for_form(n)] = nested_possible_answers
 
         else:
             # for possible answers
