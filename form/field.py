@@ -371,11 +371,24 @@ async def walk_field(
 
             # Extract all subform entry indices (n) from the answers
             subform_entry_contexts = set()
-            for key in subform_answers:
-                split_key = key.split(form_context_split_str)
-                # The 'n' index is immediately after the derived_context parts
-                n_index = split_key[len(derived_context.split(form_context_split_str))]
-                subform_entry_contexts.add(n_index)
+            options = dep_data.get("options", [])
+
+            # if subform is dependendant the options will be extracted
+            if len(options) > 0:
+                for opt in dep_data.get("options", []):
+                    val = opt.get("value")
+                    if val:
+                        subform_entry_contexts.add(sanitize_for_form(val))
+
+            # else the subform is independent
+            else:
+                for key in subform_answers:
+                    split_key = key.split(form_context_split_str)
+                    # The 'n' index is immediately after the derived_context parts
+                    n_index = split_key[
+                        len(derived_context.split(form_context_split_str))
+                    ]
+                    subform_entry_contexts.add(n_index)
 
             # Walk each subform entry
             for n in subform_entry_contexts:
