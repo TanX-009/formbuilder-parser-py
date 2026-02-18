@@ -241,7 +241,7 @@ async def walk_field(
         for trig in field.get("triggers", []):
             trig_copy = trig.copy()
             trig_copy["title"] = trig_copy.get("title", "") + "__for_possible_answers__"
-            trig_copy["id"] = f"{trig_copy.get('id', '')}___for_possible_answers__"
+            trig_copy["id"] = f"{trig_copy.get('id', '')}__for_possible_answers__"
             if trig_copy.get("type") == "section":
                 await walk_section(
                     form,
@@ -442,13 +442,13 @@ async def walk_field(
                     # empty to not add unwanted answers
                     [],
                     answers,
-                    answersWRTMetadata,
+                    {},
                     False,
-                    metadata_answers,
-                    nested_answers,
-                    flat_answers,
+                    {},
+                    {},
+                    {},
                     nested_possible_answers,
-                    constructed_answers,
+                    {},
                     async_map,
                 )
 
