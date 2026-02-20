@@ -3,7 +3,7 @@ import json
 import asyncio
 from pathlib import Path
 
-from form.form import walk_form
+from .form.form import walk_form
 
 
 def load_json(file_path: str):
