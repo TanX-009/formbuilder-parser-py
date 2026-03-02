@@ -9,7 +9,6 @@ from .defs import get_form_def, is_section_triggered_one
 from .util import is_file_data_array, dedupe_form_field_options
 from .options import get_form_options
 
-
 # ---------------------------------------------------------------------
 # Dependency Cache (disabled like TS)
 # ---------------------------------------------------------------------
@@ -151,31 +150,78 @@ async def get_chosen_options_of_dep(
     if not defn:
         return chosen
 
-    # static options
-    if defn.get("type") in {
+    field_type = defn.get("type")
+
+    # ----------------------------
+    # Static options
+    # ----------------------------
+    if field_type in {
         "checkbox",
         "radio",
         "multiselect",
         "select",
     }:
-        chosen = [opt for opt in defn.get("options", []) if opt["value"] in dep_answers]
+        chosen = [
+            opt for opt in defn.get("options", []) if opt.get("value") in dep_answers
+        ]
 
-    # fetched options
-    elif defn.get("type") in {
+    # ----------------------------
+    # Fetch options
+    # ----------------------------
+    elif field_type in {
         "fetchcheckbox",
         "fetchradio",
         "fetchmultiselect",
         "fetchselect",
     }:
-        fetched = await get_form_options(defn["url"], defn["mapping"], async_map)
-        merged = dedupe_form_field_options([defn.get("options", []), fetched])
-        chosen = [o for o in merged if o["value"] in dep_answers]
+        try:
+            fetched = await get_form_options(
+                defn["url"],
+                defn["mapping"],
+                async_map,
+            )
+        except Exception:
+            fetched = []
 
-    # exclusions
+        merged = dedupe_form_field_options([defn.get("options", []), fetched])
+
+        chosen = [o for o in merged if o.get("value") in dep_answers]
+
+    # ----------------------------
+    # CRUD Multi Select (NEW)
+    # ----------------------------
+    elif field_type == "crudmultiselect":
+        crud_config = defn.get("CRUDConfig", {})
+        select_config = defn.get("selectConfig", {})
+
+        mapping = {
+            "prenest": crud_config.get("prenest"),
+            "id": select_config.get("value"),
+            "value": select_config.get("value"),
+            "label": select_config.get("label"),
+        }
+
+        try:
+            fetched = await get_form_options(
+                crud_config.get("APIConfig", {}).get("list"),
+                mapping,
+                async_map,
+            )
+        except Exception:
+            fetched = []
+
+        deduped = dedupe_form_field_options([fetched])
+
+        chosen = [o for o in deduped if o.get("value") in dep_answers]
+
+    # ----------------------------
+    # Handle exclusions
+    # ----------------------------
     for ex in dep.get("exclude", []):
         ex_ctx = resolve_context_path(form, ex, context)
         exclude_vals = get_form_answer(ex_ctx["wIdx"], answers)
-        chosen = [o for o in chosen if o["id"] not in exclude_vals]
+
+        chosen = [o for o in chosen if o.get("id") not in exclude_vals]
 
     return chosen
 

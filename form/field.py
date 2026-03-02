@@ -333,9 +333,6 @@ async def walk_field(
             derived_metadata_context.append(metadata_id)
             nest = answersWRTMetadata
 
-            # todo use uuid from answersWRTMetadata to construct metadata_context
-            # entry_metadata_context = metadata_context
-
             if derived_metadata_context[-1] == metadata_id and nest:
                 for m_id in derived_metadata_context:
                     if m_id in nest:
